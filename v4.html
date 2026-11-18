@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flat Discount Grouping Optimizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
+
+    <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-4 sm:mt-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+
+            <!-- Left Controls Column -->
+            <div class="lg:col-span-5 space-y-6">
+                <!-- Data Input Card -->
+                <div class="bg-slate-800/60 rounded-2xl p-4 sm:p-5 border border-slate-700/50 shadow-xl space-y-4">
+                    <div class="flex justify-between items-center">
+                        <label for="csvInput" class="block text-sm font-semibold text-slate-200 flex items-center gap-2">
+                            <i data-lucide="clipboard-paste" class="w-4 h-4 text-indigo-400"></i>
+                            Paste CSV Data
+                        </label>
+                        <button id="pasteBtn" type="button" class="px-3 py-1.5 text-xs font-medium bg-slate-700/60 hover:bg-slate-700 active:bg-slate-600 text-slate-200 rounded-lg transition-colors border border-slate-600/50 flex items-center gap-1.5">
+                            <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
+                            Paste
+                        </button>
+                    </div>
+
+                    <div>
+                        <textarea id="csvInput" rows="4" style="height: calc(3.5 * 1.25rem + 1.5rem + 2px);" placeholder="Product, Price&#10;Pizza Guseppe, 13.49&#10;Riso Scotti, 13.39&#10;Avocado, 3.49&#10;Mustar, 3.65&#10;Jambon Praga, 14.99" 
+                            class="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-sm font-mono text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-slate-600 resize-y transition-all"></textarea>
+                    </div>
+
+                    <!-- Tiers (toggleable) -->
+                    <div class="pt-2 border-t border-slate-700/50">
+                        <label class="block text-xs font-medium text-slate-400 mb-2">Discount tiers and their filler product (reusable) · click to toggle</label>
+                        <div id="tierChips" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+
+                    <button id="optimizeBtn" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2">
+                        <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+                        <span>Run Optimization</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Results Column -->
+            <div class="lg:col-span-7 space-y-4 sm:space-y-6">
+                <!-- Alert Message box -->
+                <div id="alertBox" class="hidden p-4 rounded-xl border text-sm flex items-start space-x-3">
+                    <i id="alertIcon" class="w-5 h-5 flex-shrink-0 mt-0.5"></i>
+                    <div id="alertText"></div>
+                </div>
+
+                <!-- Loading State -->
+                <div id="loadingState" class="hidden bg-slate-800/40 rounded-2xl p-12 text-center border border-slate-700/30">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-500 border-t-transparent mb-4"></div>
+                    <p class="text-slate-300 font-medium">Running Optimization Engine...</p>
+                    <p class="text-xs text-slate-500 mt-1">Picking the best algorithm automatically for your item count</p>
+                </div>
+
+                <!-- Results Output Container -->
+                <div id="resultsContainer" class="hidden space-y-4 sm:space-y-6">
+
+                    <!-- Optimization Overview Cards: one shared font size, box widths fitted to the numbers -->
+                    <div id="statsRow" class="flex gap-1.5 sm:gap-2">
+                        <div class="stat-card flex flex-col min-w-0 bg-slate-800/60 rounded-xl px-1.5 py-2 sm:px-2 sm:py-2.5 border border-slate-700/50 shadow-md">
+                            <span class="stat-title block text-center text-[10px] sm:text-xs font-medium text-slate-400 leading-tight whitespace-nowrap mb-1">Total Paid</span>
+                            <div id="resTotalPaid" class="fit-value flex-1 flex items-center justify-center font-bold text-emerald-400 whitespace-nowrap overflow-hidden leading-tight">$0.00</div>
+                        </div>
+
+                        <div class="stat-card flex flex-col min-w-0 bg-slate-800/60 rounded-xl px-1.5 py-2 sm:px-2 sm:py-2.5 border border-slate-700/50 shadow-md">
+                            <span class="stat-title block text-center text-[10px] sm:text-xs font-medium text-slate-400 leading-tight whitespace-nowrap mb-1">Filler Products</span>
+                            <div id="resFillerCount" class="fit-value flex-1 flex items-center justify-center font-bold text-sky-300 whitespace-nowrap overflow-hidden leading-tight">0</div>
+                        </div>
+
+                        <div class="stat-card flex flex-col min-w-0 bg-slate-800/60 rounded-xl px-1.5 py-2 sm:px-2 sm:py-2.5 border border-slate-700/50 shadow-md">
+                            <span class="stat-title block text-center text-[10px] sm:text-xs font-medium text-slate-400 leading-tight whitespace-nowrap mb-1">Discount</span>
+                            <div id="resTotalDiscount" class="fit-value flex-1 flex items-center justify-center font-bold text-amber-400 whitespace-nowrap overflow-hidden leading-tight">$0.00</div>
+                        </div>
+
+                        <div class="stat-card flex flex-col min-w-0 bg-slate-800/60 rounded-xl px-1.5 py-2 sm:px-2 sm:py-2.5 border border-slate-700/50 shadow-md">
+                            <span class="stat-title block text-center text-[10px] sm:text-xs font-medium text-slate-400 leading-tight whitespace-nowrap mb-1">Groups</span>
+                            <div id="resValidGroups" class="fit-value flex-1 flex items-center justify-center font-bold text-indigo-300 whitespace-nowrap overflow-hidden leading-tight">0 / 0</div>
+                        </div>
+                    </div>
+
+                    <!-- Filler products summary -->
+                    <div id="fillerSection" class="hidden bg-sky-500/5 border border-sky-500/25 rounded-2xl p-4 space-y-2">
+                        <h2 class="text-sm font-bold text-sky-300 flex items-center gap-2">
+                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                            Filler products to add
+                        </h2>
+                        <div id="fillerList" class="space-y-1.5"></div>
+                    </div>
+
+                    <!-- Groups List -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                <i data-lucide="layers" class="w-5 h-5 text-indigo-400"></i>
+                                Formed Groups
+                            </h2>
+                            <button id="copySummaryBtn" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                Copy Summary
+                            </button>
+                        </div>
+
+                        <div id="groupsList" class="space-y-3">
+                            <!-- Group Cards injected here -->
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Empty Placeholder -->
+                <div id="emptyState" class="bg-slate-800/20 rounded-2xl p-12 text-center border border-dashed border-slate-700/60">
+                    <div class="w-12 h-12 rounded-full bg-slate-800 text-slate-500 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="sparkles" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-base font-semibold text-slate-300">No Optimization Results Yet</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Paste CSV data and click 'Run Optimization'.</p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // =====================================================================
+        //  EDIT HERE: DISCOUNT TIERS / FILLER PRODUCTS
+        //  Each entry is  tier : "filler product name".
+        //  A group whose items total at least `tier` gets the filler product added,
+        //  which lifts the group total to GROUP_TARGET (so the full discount applies).
+        //  The filler's price is derived automatically: GROUP_TARGET - tier
+        //  (e.g. 9.61 -> filler costs 0.39). Each filler can be used unlimited times.
+        //  Add or remove lines freely. Groups already at GROUP_TARGET need no filler.
+        // =====================================================================
+        const GROUP_TARGET = 10.00;
+        const FILLER_TIERS = {
+            9.61: "Chifla Kaiser",   // <- replace with the real product name
+            9.21: "Eugenie",
+            8.91: "Chifla Cartofi",
+            8.61: "Chifla Maia",
+            7.11: "Oreo Mini"
+        };
+        // =====================================================================
+
+        const GROUP_TARGET_CENTS = Math.round(GROUP_TARGET * 100);
+        const FILLERS = Object.entries(FILLER_TIERS)
+            .map(([t, name]) => { const tier = Math.round(parseFloat(t) * 100); return { tier, name, price: GROUP_TARGET_CENTS - tier }; })
+            .filter(f => f.tier > 0 && f.tier < GROUP_TARGET_CENTS)
+            .sort((a, b) => b.tier - a.tier);
+        const FILLER_BY_TIER = new Map(FILLERS.map(f => [f.tier, f]));
+
+        // Filler tiers the user has selected (all selected by default)
+        const ENABLED_TIERS = new Set(FILLERS.map(f => f.tier));
+        function getActiveTiers() {
+            return [GROUP_TARGET_CENTS, ...FILLERS.filter(f => ENABLED_TIERS.has(f.tier)).map(f => f.tier)];
+        }
+
+        // --- Core Optimization Engine (algorithm is chosen automatically) ---
+        class PriceGrouper {
+            constructor(tiers) {
+                this.tiers = [...tiers].sort((a, b) => b - a); // descending
+                this.top = this.tiers[0];
+                this.min = this.tiers[this.tiers.length - 1];
+            }
+
+            fromCents(v) { return Math.round(v) / 100; }
+
+            // Highest tier <= sum, or 0 if the sum is below every tier
+            tierFor(sum) {
+                if (sum < this.min) return 0;
+                for (let i = 0; i < this.tiers.length; i++) if (sum >= this.tiers[i]) return this.tiers[i];
+                return 0;
+            }
+
+            group(prices) {
+                // An item >= top tier already earns the maximum discount alone; extra items can't raise it.
+                const standalone = [], pool = [];
+                for (const it of prices) (it.cents >= this.top ? standalone : pool).push({ ...it });
+
+                const poolSum = pool.reduce((a, b) => a + b.cents, 0);
+                const maxGroups = standalone.length + Math.floor(poolSum / this.min);
+
+                let res = { groups: [], leftovers: [] }, method = "Single-item tiers";
+                if (pool.length > 0 && pool.length <= 16) {
+                    res = this._solveExact(pool);
+                    method = `Exact DP (N=${pool.length})`;
+                } else if (pool.length > 16) {
+                    res = this._solveAnnealing(pool);
+                    res = this._polish(res.groups, res.leftovers);
+                    method = `Simulated annealing + exact polish (N=${pool.length})`;
+                }
+
+                const groups = [...standalone.map(i => [i]), ...res.groups];
+                if (res.leftovers.length) groups.push(res.leftovers);
+                return this._buildResult(groups, method, maxGroups);
+            }
+
+            // EXACT: dp[mask] = best total discount using items in mask (unused items stay as leftovers)
+            _solveExact(pool) {
+                const n = pool.length, N = 1 << n;
+                const sum = new Int32Array(N), val = new Int32Array(N);
+                for (let m = 1; m < N; m++) {
+                    const low = m & -m;
+                    sum[m] = sum[m ^ low] + pool[31 - Math.clz32(low)].cents;
+                    val[m] = this.tierFor(sum[m]);
+                }
+                const dp = new Int32Array(N), pick = new Int32Array(N);
+                for (let m = 1; m < N; m++) {
+                    const low = m & -m, rest = m ^ low;
+                    let best = dp[rest], bp = 0; // option: lowest item is a leftover
+                    for (let sub = rest; ; sub = (sub - 1) & rest) {
+                        const s = sub | low;
+                        if (val[s] > 0) {
+                            const v = val[s] + dp[m ^ s];
+                            if (v > best) { best = v; bp = s; }
+                        }
+                        if (sub === 0) break;
+                    }
+                    dp[m] = best; pick[m] = bp;
+                }
+                const groups = [], leftovers = [];
+                let m = N - 1;
+                while (m) {
+                    const low = m & -m, s = pick[m];
+                    if (s === 0) { leftovers.push(pool[31 - Math.clz32(low)]); m ^= low; continue; }
+                    const g = [];
+                    for (let i = 0; i < n; i++) if (s & (1 << i)) g.push(pool[i]);
+                    groups.push(g);
+                    m ^= s;
+                }
+                return { groups, leftovers };
+            }
+
+            // Objective contribution of one group: real discount, plus small shaping terms
+            // (reward filling a group toward the lowest tier; mildly penalize wasted overshoot).
+            _f(sum) {
+                const t = this.tierFor(sum);
+                if (t > 0) return t - 0.3 * (sum - t);
+                const r = sum / this.min;
+                return 100 * r * r;
+            }
+
+            // ANNEALING for larger sets: O(1) incremental moves (move item / swap items), multiple restarts
+            _solveAnnealing(pool) {
+                const n = pool.length;
+                const cents = pool.map(p => p.cents);
+                const total = cents.reduce((a, b) => a + b, 0);
+                const K = Math.max(2, Math.min(n, Math.floor(total / this.min) + 1));
+                const restarts = 20;
+                const steps = Math.max(150000, 8000 * n);
+                const f = s => this._f(s), tf = s => this.tierFor(s);
+                const order = [...Array(n).keys()].sort((a, b) => cents[b] - cents[a]);
+
+                let bestTd = -1, bestSc = -Infinity, bestAssign = null;
+
+                for (let r = 0; r < restarts; r++) {
+                    const assign = new Int32Array(n), gs = new Int32Array(K);
+                    if (r === 0) { // largest items first, always into the lightest group
+                        for (const i of order) {
+                            let g = 0;
+                            for (let k = 1; k < K; k++) if (gs[k] < gs[g]) g = k;
+                            assign[i] = g; gs[g] += cents[i];
+                        }
+                    } else {
+                        for (let i = 0; i < n; i++) { assign[i] = (Math.random() * K) | 0; gs[assign[i]] += cents[i]; }
+                    }
+                    let sc = 0, td = 0;
+                    for (let k = 0; k < K; k++) { sc += f(gs[k]); td += tf(gs[k]); }
+
+                    let T = 80;
+                    const alpha = Math.pow(0.5 / T, 1 / steps);
+                    for (let s = 0; s < steps; s++, T *= alpha) {
+                        const i = (Math.random() * n) | 0, a = assign[i];
+                        let b, da, db, j = -1;
+                        if (Math.random() < 0.5) {
+                            b = (Math.random() * K) | 0;
+                            if (b === a) continue;
+                            da = gs[a] - cents[i]; db = gs[b] + cents[i];
+                        } else {
+                            j = (Math.random() * n) | 0; b = assign[j];
+                            if (b === a) continue;
+                            const diff = cents[j] - cents[i];
+                            da = gs[a] + diff; db = gs[b] - diff;
+                        }
+                        const d = f(da) + f(db) - f(gs[a]) - f(gs[b]);
+                        if (d >= 0 || Math.random() < Math.exp(d / T)) {
+                            td += tf(da) + tf(db) - tf(gs[a]) - tf(gs[b]);
+                            sc += d;
+                            gs[a] = da; gs[b] = db;
+                            if (j < 0) assign[i] = b; else { assign[i] = b; assign[j] = a; }
+                            if (td > bestTd || (td === bestTd && sc > bestSc)) {
+                                bestTd = td; bestSc = sc; bestAssign = assign.slice();
+                            }
+                        }
+                    }
+                }
+
+                const buckets = Array.from({ length: K }, () => []);
+                for (let i = 0; i < n; i++) buckets[bestAssign[i]].push(pool[i]);
+                const groups = [], leftovers = [];
+                for (const g of buckets) {
+                    if (!g.length) continue;
+                    if (tf(g.reduce((a, b) => a + b.cents, 0)) > 0) groups.push(g); else leftovers.push(...g);
+                }
+                return { groups, leftovers };
+            }
+
+            // POLISH: repeatedly re-solve a few groups (+ some leftovers) exactly with the DP.
+            // Never lowers the total discount; finds multi-item reshuffles annealing misses.
+            _polish(groups, leftovers, iters = 2000, maxItems = 12) {
+                const sumOf = g => g.reduce((a, b) => a + b.cents, 0);
+                const shuffle = arr => {
+                    for (let i = arr.length - 1; i > 0; i--) {
+                        const j = (Math.random() * (i + 1)) | 0;
+                        [arr[i], arr[j]] = [arr[j], arr[i]];
+                    }
+                    return arr;
+                };
+                groups = groups.map(g => g.slice());
+                leftovers = leftovers.slice();
+
+                const tierSum = () => groups.reduce((a, g) => a + this.tierFor(sumOf(g)), 0);
+                let bestTotal = tierSum(), stale = 0;
+
+                for (let it = 0; it < iters; it++) {
+                    const pickLeft = shuffle(leftovers.slice()).slice(0, Math.floor(maxItems / 2));
+                    let count = pickLeft.length;
+                    const chosen = [];
+                    for (const gi of shuffle(groups.map((_, i) => i))) {
+                        if (count + groups[gi].length <= maxItems) { chosen.push(gi); count += groups[gi].length; }
+                        if (count >= maxItems - 1) break;
+                    }
+                    if (chosen.length + (pickLeft.length ? 1 : 0) < 2) continue;
+
+                    const sub = [...pickLeft, ...chosen.flatMap(gi => groups[gi])];
+                    const before = chosen.reduce((a, gi) => a + this.tierFor(sumOf(groups[gi])), 0);
+                    const r = this._solveExact(sub);
+                    const after = r.groups.reduce((a, g) => a + this.tierFor(sumOf(g)), 0);
+
+                    if (after >= before) {
+                        const chosenSet = new Set(chosen), leftSet = new Set(pickLeft);
+                        groups = groups.filter((_, i) => !chosenSet.has(i)).concat(r.groups);
+                        leftovers = leftovers.filter(x => !leftSet.has(x)).concat(r.leftovers);
+                    }
+                    if (after > before) { bestTotal += after - before; stale = 0; }
+                    else if (++stale >= 400) break; // no improvement in 400 rounds -> done
+                }
+                return { groups, leftovers };
+            }
+
+            _buildResult(groups, method, maxTheoretical) {
+                let orig = 0, paid = 0, disc = 0;
+                const fillerCount = new Map();
+                const formatted = groups.map((grp, idx) => {
+                    const sum = grp.reduce((a, b) => a + b.cents, 0);
+                    const tier = this.tierFor(sum);
+                    const filler = (tier > 0 && tier < GROUP_TARGET_CENTS) ? FILLER_BY_TIER.get(tier) : null;
+                    const fillerPrice = filler ? filler.price : 0;
+                    const total = sum + fillerPrice;
+                    const groupPaid = tier > 0 ? total - GROUP_TARGET_CENTS : sum; // equals sum - tier
+                    if (filler) fillerCount.set(tier, (fillerCount.get(tier) || 0) + 1);
+                    orig += sum; paid += groupPaid; disc += tier;
+                    return {
+                        id: idx + 1,
+                        items: grp.map(it => ({ name: it.name, price: this.fromCents(it.cents) })),
+                        filler: filler ? { name: filler.name, price: this.fromCents(filler.price) } : null,
+                        sum: this.fromCents(sum),
+                        total: this.fromCents(total),
+                        tier: this.fromCents(tier),
+                        paid: this.fromCents(groupPaid),
+                        discount: this.fromCents(tier),
+                        qualifies: tier > 0
+                    };
+                });
+                const fillers = FILLERS.filter(f => fillerCount.has(f.tier))
+                    .map(f => ({ name: f.name, price: this.fromCents(f.price), count: fillerCount.get(f.tier) }));
+                return {
+                    totalGroups: formatted.length,
+                    validGroups: formatted.filter(g => g.qualifies).length,
+                    maxTheoretical,
+                    totalOriginal: this.fromCents(orig),
+                    totalPaid: this.fromCents(paid),
+                    totalDiscount: this.fromCents(disc),
+                    fillers,
+                    methodUsed: method,
+                    tiersUsed: [...this.tiers],
+                    groups: formatted
+                };
+            }
+        }
+
+        // --- CSV Parsing ---
+        function parseCSVInput(text) {
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length === 0) return [];
+
+            const firstLine = lines[0];
+            let delimiter = ',';
+            if (firstLine.includes('\t')) delimiter = '\t';
+            else if (firstLine.includes(';') && !firstLine.includes(',')) delimiter = ';';
+
+            const items = [];
+            const firstRowCols = firstLine.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+            let priceColIdx = 1;
+            let nameColIdx = 0;
+
+            let startIndex = 0;
+            const hasHeader = firstRowCols.some(col => isNaN(parseFloat(col.replace(/[^0-9.-]/g, ''))));
+
+            if (hasHeader) {
+                startIndex = 1;
+                firstRowCols.forEach((col, idx) => {
+                    const lower = col.toLowerCase();
+                    if (lower.includes('price') || lower.includes('cost') || lower.includes('amount') || lower.includes('val')) {
+                        priceColIdx = idx;
+                    } else if (lower.includes('item') || lower.includes('product') || lower.includes('name') || lower.includes('title')) {
+                        nameColIdx = idx;
+                    }
+                });
+            }
+
+            for (let i = startIndex; i < lines.length; i++) {
+                const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+                if (cols.length < 2 && priceColIdx !== 0) continue;
+
+                const name = cols[nameColIdx] || `Item ${i}`;
+                const rawPrice = cols[priceColIdx] !== undefined ? cols[priceColIdx] : cols[0];
+                const cleanPrice = parseFloat(rawPrice.replace(/[^0-9.-]/g, ''));
+
+                if (!isNaN(cleanPrice) && cleanPrice > 0) {
+                    items.push({
+                        name: name || `Item ${items.length + 1}`,
+                        price: Math.round(cleanPrice * 100) / 100,
+                        cents: Math.round(cleanPrice * 100)
+                    });
+                }
+            }
+
+            return items;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            lucide.createIcons();
+
+            const csvInput = document.getElementById("csvInput");
+            const pasteBtn = document.getElementById("pasteBtn");
+            const tierChips = document.getElementById("tierChips");
+            const optimizeBtn = document.getElementById("optimizeBtn");
+
+            const resultsContainer = document.getElementById("resultsContainer");
+            const emptyState = document.getElementById("emptyState");
+            const loadingState = document.getElementById("loadingState");
+            const alertBox = document.getElementById("alertBox");
+            const alertText = document.getElementById("alertText");
+            const alertIcon = document.getElementById("alertIcon");
+
+            const statsRow = document.getElementById("statsRow");
+            const resTotalPaid = document.getElementById("resTotalPaid");
+            const resFillerCount = document.getElementById("resFillerCount");
+            const resTotalDiscount = document.getElementById("resTotalDiscount");
+            const resValidGroups = document.getElementById("resValidGroups");
+            
+            const groupsList = document.getElementById("groupsList");
+            const fillerSection = document.getElementById("fillerSection");
+            const fillerList = document.getElementById("fillerList");
+            const copySummaryBtn = document.getElementById("copySummaryBtn");
+
+            let currentResult = null;
+
+            // --- Stats row: one shared font size; each box sized to its number so the row fills edge to edge ---
+            const FIT_MAX_PX = 64, FIT_MIN_PX = 10, REF_PX = 20;
+            function textWidth(el) {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                return range.getBoundingClientRect().width;
+            }
+            function fitStats() {
+                if (!statsRow.clientWidth) return;
+                const cards = [...statsRow.querySelectorAll(".stat-card")];
+                const gap = parseFloat(getComputedStyle(statsRow).columnGap) || 0;
+                const avail = statsRow.clientWidth - gap * (cards.length - 1);
+
+                const data = cards.map(card => {
+                    const val = card.querySelector(".fit-value");
+                    const title = card.querySelector(".stat-title");
+                    val.style.fontSize = REF_PX + "px";
+                    const cs = getComputedStyle(card);
+                    const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)
+                              + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+                    return { card, val, pad, numW: textWidth(val), titleW: textWidth(title) };
+                });
+
+                // Box width at font size F: wide enough for its number, and never narrower than its title
+                const boxW = (d, F) => d.pad + Math.max(d.numW * F / REF_PX, d.titleW);
+                const rowW = F => data.reduce((a, d) => a + boxW(d, F), 0);
+
+                // Largest shared font size whose boxes still fit in the row
+                let lo = FIT_MIN_PX, hi = FIT_MAX_PX;
+                if (rowW(hi) <= avail) lo = hi;
+                else for (let k = 0; k < 25; k++) { const mid = (lo + hi) / 2; if (rowW(mid) <= avail) lo = mid; else hi = mid; }
+                const F = lo * 0.98; // tiny safety margin so nothing gets clipped
+
+                data.forEach(d => {
+                    d.val.style.fontSize = F + "px";
+                    d.card.style.flex = `1 1 ${boxW(d, F)}px`;
+                });
+            }
+            window.addEventListener("resize", () => { if (currentResult) fitStats(); });
+            if (document.fonts && document.fonts.ready) {
+                document.fonts.ready.then(() => { if (currentResult) fitStats(); });
+            }
+
+            // --- Tier chips: toggleable filler chips ---
+            function renderTierChips() {
+                tierChips.innerHTML = FILLERS.map(f => {
+                    const on = ENABLED_TIERS.has(f.tier);
+                    const cls = on
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/25'
+                        : 'bg-slate-900/40 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500';
+                    return `<button type="button" data-tier="${f.tier}" aria-pressed="${on}" title="${on ? 'Click to unselect' : 'Click to select'}"
+                        class="px-2.5 py-1 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-colors ${cls}">
+                        <i data-lucide="${on ? 'check' : 'circle'}" class="w-3 h-3"></i>$${(f.tier / 100).toFixed(2)} + ${escapeHTML(f.name)}
+                    </button>`;
+                }).join("");
+                lucide.createIcons();
+            }
+
+            tierChips.addEventListener("click", (e) => {
+                const btn = e.target.closest("[data-tier]");
+                if (!btn) return;
+                const t = parseInt(btn.dataset.tier, 10);
+                if (ENABLED_TIERS.has(t)) ENABLED_TIERS.delete(t); else ENABLED_TIERS.add(t);
+                renderTierChips();
+            });
+
+            renderTierChips();
+
+            csvInput.value = "";
+            csvInput.addEventListener("input", hideAlert);
+
+            // --- Paste button (needs HTTPS, e.g. GitHub Pages; iOS shows a "Paste" bubble to tap) ---
+            pasteBtn.addEventListener("click", async () => {
+                try {
+                    if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error("unsupported");
+                    const text = await navigator.clipboard.readText();
+                    if (!text || !text.trim()) {
+                        showAlert("The clipboard is empty.");
+                        return;
+                    }
+                    csvInput.value = text;
+                    hideAlert();
+                } catch (err) {
+                    csvInput.focus();
+                    showAlert("Couldn't read the clipboard. Long-press the text box and choose Paste.");
+                }
+            });
+
+            optimizeBtn.addEventListener("click", runOptimization);
+            copySummaryBtn.addEventListener("click", copyResultsToClipboard);
+
+            function showAlert(msg, type = "error") {
+                alertBox.classList.remove("hidden", "bg-rose-500/10", "border-rose-500/30", "text-rose-300", "bg-emerald-500/10", "border-emerald-500/30", "text-emerald-300");
+                
+                if (type === "error") {
+                    alertBox.classList.add("bg-rose-500/10", "border-rose-500/30", "text-rose-300");
+                    alertIcon.setAttribute("data-lucide", "alert-circle");
+                } else {
+                    alertBox.classList.add("bg-emerald-500/10", "border-emerald-500/30", "text-emerald-300");
+                    alertIcon.setAttribute("data-lucide", "check-circle");
+                }
+
+                alertText.textContent = msg;
+                lucide.createIcons();
+            }
+
+            function hideAlert() {
+                alertBox.classList.add("hidden");
+            }
+
+            function runOptimization() {
+                hideAlert();
+                const text = csvInput.value;
+                const items = parseCSVInput(text);
+
+                if (items.length === 0) {
+                    showAlert("Please paste CSV data with valid product names and prices.");
+                    return;
+                }
+
+
+                emptyState.classList.add("hidden");
+                resultsContainer.classList.add("hidden");
+                loadingState.classList.remove("hidden");
+
+                setTimeout(() => {
+                    try {
+                        const grouper = new PriceGrouper(getActiveTiers());
+                        const result = grouper.group(items);
+                        currentResult = result;
+                        renderResults(result);
+                    } catch (err) {
+                        console.error(err);
+                        showAlert("An error occurred during optimization: " + err.message);
+                        emptyState.classList.remove("hidden");
+                    } finally {
+                        loadingState.classList.add("hidden");
+                    }
+                }, 40);
+            }
+
+            function renderResults(res) {
+                resultsContainer.classList.remove("hidden");
+
+                resTotalPaid.textContent = `$${res.totalPaid.toFixed(2)}`;
+                resFillerCount.textContent = res.fillers.reduce((a, f) => a + f.count, 0);
+                resTotalDiscount.textContent = `$${res.totalDiscount.toFixed(2)}`;
+                resValidGroups.textContent = `${res.validGroups} / ${res.totalGroups}`;
+                fitStats();
+
+                if (res.fillers.length) {
+                    fillerSection.classList.remove("hidden");
+                    fillerList.innerHTML = res.fillers.map(f => `
+                        <div class="flex items-center gap-3 py-1.5 px-3 bg-sky-500/10 rounded-lg text-xs">
+                            <span class="font-mono font-bold text-sky-300 min-w-[2.5rem]">${f.count} x</span>
+                            <span class="text-sky-100 font-medium">${escapeHTML(f.name)} <span class="text-sky-300/70 font-mono">($${f.price.toFixed(2)} each)</span></span>
+                        </div>`).join("");
+                } else {
+                    fillerSection.classList.add("hidden");
+                }
+
+                groupsList.innerHTML = "";
+                if (res.groups.length === 0) {
+                    groupsList.innerHTML = `<div class="p-4 bg-slate-800/40 rounded-xl text-slate-400 text-sm">No items were provided to group.</div>`;
+                } else {
+                    res.groups.forEach(group => {
+                        const bad = !group.qualifies;
+                        const card = document.createElement("div");
+                        card.className = `flex items-start gap-3 rounded-xl p-3 border shadow-md transition-colors ${bad
+                            ? 'bg-rose-500/10 border-rose-500/50'
+                            : 'bg-slate-800/60 border-slate-700/60 hover:border-slate-600'}`;
+
+                        const itemsHTML = group.items.map(it => `
+                            <div class="flex justify-between items-center gap-2 py-1 px-2.5 bg-slate-900/60 rounded-lg text-xs min-w-0">
+                                <span class="text-slate-200 font-medium truncate">${escapeHTML(it.name)}</span>
+                                <span class="font-mono text-slate-300 shrink-0">$${it.price.toFixed(2)}</span>
+                            </div>
+                        `).join("");
+
+                        const fillerHTML = group.filler ? `
+                            <div class="flex justify-between items-center gap-2 py-1 px-2.5 bg-sky-500/10 border border-sky-500/30 rounded-lg text-xs min-w-0">
+                                <span class="text-sky-200 font-medium truncate">${escapeHTML(group.filler.name)}</span>
+                                <span class="font-mono text-sky-300 shrink-0">$${group.filler.price.toFixed(2)}</span>
+                            </div>` : '';
+
+                        card.innerHTML = `
+                            <span class="w-6 h-6 mt-0.5 shrink-0 rounded-full ${bad ? 'bg-rose-500/25 text-rose-200' : 'bg-indigo-500/20 text-indigo-300'} text-xs font-bold flex items-center justify-center">
+                                ${group.id}
+                            </span>
+                            <div class="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                ${itemsHTML}${fillerHTML}
+                            </div>
+                        `;
+                        groupsList.appendChild(card);
+                    });
+                }
+
+                lucide.createIcons();
+            }
+
+            function copyResultsToClipboard() {
+                if (!currentResult) return;
+
+                let summary = `PRICE GROUPING OPTIMIZER REPORT\n`;
+                summary += `Discount Tiers: ${currentResult.tiersUsed.map(t => '$' + (t / 100).toFixed(2)).join(', ')}\n`;
+                summary += `Algorithm: ${currentResult.methodUsed}\n`;
+                summary += `Original Total: $${currentResult.totalOriginal.toFixed(2)}\n`;
+                summary += `Total Paid: $${currentResult.totalPaid.toFixed(2)}\n`;
+                summary += `Total Discount: $${currentResult.totalDiscount.toFixed(2)}\n`;
+                if (currentResult.fillers.length) {
+                    summary += `Filler products: ${currentResult.fillers.map(f => f.count + 'x ' + f.name).join(', ')}\n`;
+                }
+                summary += `Valid Qualifying Groups: ${currentResult.validGroups} / ${currentResult.totalGroups} (Theoretical Max: ${currentResult.maxTheoretical})\n\n`;
+
+                currentResult.groups.forEach(g => {
+                    summary += `--- GROUP ${g.id} (Group Total: $${g.total.toFixed(2)} | Pay: $${g.paid.toFixed(2)} | Saved: $${g.discount.toFixed(2)} (tier $${g.tier.toFixed(2)}) | Qualifies: ${g.qualifies}) ---\n`;
+                    g.items.forEach(it => {
+                        summary += ` - ${it.name}: $${it.price.toFixed(2)}\n`;
+                    });
+                    if (g.filler) summary += ` + ${g.filler.name}: $${g.filler.price.toFixed(2)}\n`;
+                    summary += `\n`;
+                });
+
+                copyToClipboard(summary);
+                showAlert("Optimization summary copied to clipboard!", "success");
+            }
+
+            function copyToClipboard(text) {
+                const textarea = document.createElement("textarea");
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand("copy");
+                document.body.removeChild(textarea);
+            }
+
+            function escapeHTML(str) {
+                return str.replace(/[&<>'"]/g, 
+                    tag => ({
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        "'": '&#39;',
+                        '"': '&quot;'
+                    }[tag] || tag)
+                );
+            }
+        });
+    </script>
+</body>
+</html>
