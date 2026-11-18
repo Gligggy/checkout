@@ -11,6 +11,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
+        /* html, body { overscroll-behavior-y: none; } */
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen pb-12">
@@ -151,7 +152,7 @@
             9.21: "Eugenie",
             8.91: "Chifla Cartofi",
             8.61: "Chifla Maia",
-            7.11: "Oreo Mini"
+            7.11: "Oreo Mini",
         };
         // =====================================================================
 
@@ -259,7 +260,7 @@
                 const cents = pool.map(p => p.cents);
                 const total = cents.reduce((a, b) => a + b, 0);
                 const K = Math.max(2, Math.min(n, Math.floor(total / this.min) + 1));
-                const restarts = 20;
+                const restarts = 5;
                 const steps = Math.max(150000, 8000 * n);
                 const f = s => this._f(s), tf = s => this.tierFor(s);
                 const order = [...Array(n).keys()].sort((a, b) => cents[b] - cents[a]);
@@ -320,7 +321,7 @@
 
             // POLISH: repeatedly re-solve a few groups (+ some leftovers) exactly with the DP.
             // Never lowers the total discount; finds multi-item reshuffles annealing misses.
-            _polish(groups, leftovers, iters = 2000, maxItems = 12) {
+            _polish(groups, leftovers, iters = 2000, maxItems = 13) {
                 const sumOf = g => g.reduce((a, b) => a + b.cents, 0);
                 const shuffle = arr => {
                     for (let i = arr.length - 1; i > 0; i--) {
@@ -480,6 +481,21 @@
 
             let currentResult = null;
 
+            // --- Save/restore state so a reload doesn't lose anything ---
+            const STORE_KEY = "fdgo-state-v1";
+            function saveState() {
+                try {
+                    localStorage.setItem(STORE_KEY, JSON.stringify({
+                        csv: csvInput.value,
+                        tiers: [...ENABLED_TIERS],
+                        result: currentResult
+                    }));
+                } catch (e) { /* storage full or blocked: ignore */ }
+            }
+            function loadState() {
+                try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch (e) { return null; }
+            }
+
             // --- Stats row: one shared font size; each box sized to its number so the row fills edge to edge ---
             const FIT_MAX_PX = 64, FIT_MIN_PX = 10, REF_PX = 20;
             function textWidth(el) {
@@ -532,7 +548,7 @@
                         : 'bg-slate-900/40 border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500';
                     return `<button type="button" data-tier="${f.tier}" aria-pressed="${on}" title="${on ? 'Click to unselect' : 'Click to select'}"
                         class="px-2.5 py-1 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-colors ${cls}">
-                        <i data-lucide="${on ? 'check' : 'circle'}" class="w-3 h-3"></i>$${(f.tier / 100).toFixed(2)} + ${escapeHTML(f.name)}
+                        <i data-lucide="${on ? 'check' : 'circle'}" class="w-3 h-3"></i>${escapeHTML(f.name)}
                     </button>`;
                 }).join("");
                 lucide.createIcons();
@@ -544,15 +560,43 @@
                 const t = parseInt(btn.dataset.tier, 10);
                 if (ENABLED_TIERS.has(t)) ENABLED_TIERS.delete(t); else ENABLED_TIERS.add(t);
                 renderTierChips();
+                saveState();
             });
 
+            const saved = loadState();
+            if (saved && Array.isArray(saved.tiers)) {
+                ENABLED_TIERS.clear();
+                saved.tiers.forEach(t => { if (FILLER_BY_TIER.has(t)) ENABLED_TIERS.add(t); });
+            }
             renderTierChips();
 
-            csvInput.value = "";
-            csvInput.addEventListener("input", hideAlert);
+            csvInput.value = (saved && saved.csv) || "";
+            csvInput.addEventListener("input", () => { hideAlert(); saveState(); });
 
-            // --- Paste button (needs HTTPS, e.g. GitHub Pages; iOS shows a "Paste" bubble to tap) ---
+            if (saved && saved.result) {
+                currentResult = saved.result;
+                emptyState.classList.add("hidden");
+                renderResults(saved.result);
+            }
+
+            // --- Paste button: resets everything, then pastes the clipboard ---
+            // (needs HTTPS, e.g. GitHub Pages; iOS shows a "Paste" bubble to tap)
+            function resetAll() {
+                FILLERS.forEach(f => ENABLED_TIERS.add(f.tier));
+                renderTierChips();
+                currentResult = null;
+                csvInput.value = "";
+                hideAlert();
+                loadingState.classList.add("hidden");
+                resultsContainer.classList.add("hidden");
+                emptyState.classList.remove("hidden");
+                groupsList.innerHTML = "";
+                fillerList.innerHTML = "";
+                saveState();
+            }
+
             pasteBtn.addEventListener("click", async () => {
+                resetAll();
                 try {
                     if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error("unsupported");
                     const text = await navigator.clipboard.readText();
@@ -561,7 +605,7 @@
                         return;
                     }
                     csvInput.value = text;
-                    hideAlert();
+                    saveState();
                 } catch (err) {
                     csvInput.focus();
                     showAlert("Couldn't read the clipboard. Long-press the text box and choose Paste.");
@@ -678,6 +722,7 @@
                 }
 
                 lucide.createIcons();
+                saveState();
             }
 
             function copyResultsToClipboard() {
